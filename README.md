@@ -137,3 +137,14 @@ Trường `raw` giữ nguyên JSON từ CLI để bạn có thể debug nếu sk
 - Thêm endpoint khác có thể tái sử dụng `OpenclawService.runAgentCommand(...)` để gửi lệnh tuỳ chọn.
 - Có thể đổi `OPENCLAW_SESSION_KEY` để phân tách session giữa API và Telegram.
 - Khi cập nhật skill `.md`, nhớ copy lại vào `~/.openclaw/agents/main/` rồi restart gateway theo hướng dẫn `openclaw-config`.
+
+## 9. Expose API qua ngrok
+
+Trong trường hợp bạn cần cho hệ thống bên ngoài gọi `POST /auto-apply` nhưng server đang chạy local, hãy expose thông qua ngrok:
+
+1. Cài `ngrok` và add authtoken (`ngrok config add-authtoken <token>`).
+2. Tạo tunnel `openclaw-be` trỏ tới `PORT` bạn đã cấu hình (mặc định 3000) bên trong `~/.config/ngrok/ngrok.yml`.
+3. Chạy `ngrok start openclaw-be` để lấy URL HTTPS ổn định, sau đó cập nhật URL cho hệ thống caller.
+4. Bảo vệ endpoint bằng API key / auth guard nếu dữ liệu cover letter nhạy cảm.
+
+Chi tiết (bao gồm mẫu `ngrok.yml`, cách gắn hostname cố định và checklist vận hành) nằm trong `NGROK.md`.
