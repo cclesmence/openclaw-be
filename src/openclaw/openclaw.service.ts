@@ -12,6 +12,13 @@ import {
   RunAgentCommandResponse,
 } from './types/openclaw-agent.types';
 
+interface ToolJobsNotificationPayload {
+  status: 'success' | 'error';
+  finalText?: string;
+  errorMessage?: string;
+  commandMessage?: string;
+}
+
 @Injectable()
 export class OpenclawService {
   private readonly logger = new Logger(OpenclawService.name);
@@ -22,11 +29,19 @@ export class OpenclawService {
   private readonly timeoutMs = Number(
     process.env.OPENCLAW_TIMEOUT_MS ?? 600000,
   );
+  private readonly toolJobsWebhookUrl = process.env.TOOL_JOBS_WEBHOOK_URL;
+  private readonly toolJobsWebhookToken = process.env.TOOL_JOBS_WEBHOOK_TOKEN;
 
   async autoApply(dto: AutoApplyDto): Promise<RunAgentCommandResponse> {
-    await this.ensureChrome();
     const message = this.buildAutoApplyMessage(dto);
-    return this.runAgentCommand(message);
+    return this.executeAutoApplyCommand(message);
+  }
+
+  queueAutoApply(dto: AutoApplyDto): void {
+    const message = this.buildAutoApplyMessage(dto);
+    void this.executeAutoApplyCommand(message)
+      .then((result) => this.handleAutoApplySuccess(result, message))
+      .catch((error) => this.handleAutoApplyError(error as Error, message));
   }
 
   private buildAutoApplyMessage(dto: AutoApplyDto): string {
@@ -50,6 +65,14 @@ export class OpenclawService {
     }
 
     return `/apply ${jobIdentifier} jobType=${jobType}\n\nCOVER_LETTER:\n${coverLetter}`;
+  }
+
+  private async executeAutoApplyCommand(
+    message: string,
+    options?: RunAgentCommandOptions,
+  ) {
+    await this.ensureChrome();
+    return this.runAgentCommand(message, options);
   }
 
   private async runAgentCommand(
@@ -278,5 +301,67 @@ export class OpenclawService {
     }
 
     return output.slice(start, end + 1);
+  }
+
+  private async handleAutoApplySuccess(
+    result: RunAgentCommandResponse,
+    commandMessage?: string,
+  ) {
+    const runId = result.raw.runId;
+    const status = result.raw.status;
+    this.logger.log(`Auto-apply run ${runId} finished with status ${status}.`);
+    if (result.finalText) {
+      this.logger.debug(`Auto-apply output:\n${result.finalText}`);
+    }
+
+    await this.notifyToolJobs({
+      status: 'success',
+      finalText: result.finalText,
+      commandMessage,
+    });
+  }
+
+  private async handleAutoApplyError(error: Error, commandMessage?: string) {
+    this.logger.error('Auto-apply run failed.', error);
+
+    await this.notifyToolJobs({
+      status: 'error',
+      errorMessage: commandMessage
+        ? `${commandMessage} -> ${error.message}`
+        : error.message,
+    });
+  }
+
+  private async notifyToolJobs(
+    payload: ToolJobsNotificationPayload,
+  ): Promise<void> {
+    if (!this.toolJobsWebhookUrl) {
+      return;
+    }
+
+    try {
+      const response = await fetch(this.toolJobsWebhookUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(this.toolJobsWebhookToken
+            ? { Authorization: `Bearer ${this.toolJobsWebhookToken}` }
+            : {}),
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const text = await response.text().catch(() => '');
+        this.logger.warn(
+          `tool-jobs webhook responded with ${response.status}. ${text}`,
+        );
+      }
+    } catch (notifyError) {
+      this.logger.error(
+        'Failed to notify tool-jobs webhook.',
+        notifyError as Error,
+      );
+    }
   }
 }

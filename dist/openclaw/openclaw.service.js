@@ -17,10 +17,17 @@ let OpenclawService = OpenclawService_1 = class OpenclawService {
     agentId = process.env.OPENCLAW_AGENT_ID ?? 'main';
     sessionKey = process.env.OPENCLAW_SESSION_KEY ?? 'agent:main:auto-apply';
     timeoutMs = Number(process.env.OPENCLAW_TIMEOUT_MS ?? 600000);
+    toolJobsWebhookUrl = process.env.TOOL_JOBS_WEBHOOK_URL;
+    toolJobsWebhookToken = process.env.TOOL_JOBS_WEBHOOK_TOKEN;
     async autoApply(dto) {
-        await this.ensureChrome();
         const message = this.buildAutoApplyMessage(dto);
-        return this.runAgentCommand(message);
+        return this.executeAutoApplyCommand(message);
+    }
+    queueAutoApply(dto) {
+        const message = this.buildAutoApplyMessage(dto);
+        void this.executeAutoApplyCommand(message)
+            .then((result) => this.handleAutoApplySuccess(result, message))
+            .catch((error) => this.handleAutoApplyError(error, message));
     }
     buildAutoApplyMessage(dto) {
         const coverLetter = dto.coverLetter?.trim();
@@ -36,6 +43,10 @@ let OpenclawService = OpenclawService_1 = class OpenclawService {
             throw new common_1.InternalServerErrorException('jobType phải là Hourly hoặc Fixed.');
         }
         return `/apply ${jobIdentifier} jobType=${jobType}\n\nCOVER_LETTER:\n${coverLetter}`;
+    }
+    async executeAutoApplyCommand(message, options) {
+        await this.ensureChrome();
+        return this.runAgentCommand(message, options);
     }
     async runAgentCommand(message, options) {
         const args = [
@@ -206,6 +217,52 @@ let OpenclawService = OpenclawService_1 = class OpenclawService {
             throw new common_1.InternalServerErrorException('OpenClaw không trả về JSON hợp lệ.');
         }
         return output.slice(start, end + 1);
+    }
+    async handleAutoApplySuccess(result, commandMessage) {
+        const runId = result.raw.runId;
+        const status = result.raw.status;
+        this.logger.log(`Auto-apply run ${runId} finished with status ${status}.`);
+        if (result.finalText) {
+            this.logger.debug(`Auto-apply output:\n${result.finalText}`);
+        }
+        await this.notifyToolJobs({
+            status: 'success',
+            finalText: result.finalText,
+            commandMessage,
+        });
+    }
+    async handleAutoApplyError(error, commandMessage) {
+        this.logger.error('Auto-apply run failed.', error);
+        await this.notifyToolJobs({
+            status: 'error',
+            errorMessage: commandMessage
+                ? `${commandMessage} -> ${error.message}`
+                : error.message,
+        });
+    }
+    async notifyToolJobs(payload) {
+        if (!this.toolJobsWebhookUrl) {
+            return;
+        }
+        try {
+            const response = await fetch(this.toolJobsWebhookUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(this.toolJobsWebhookToken
+                        ? { Authorization: `Bearer ${this.toolJobsWebhookToken}` }
+                        : {}),
+                },
+                body: JSON.stringify(payload),
+            });
+            if (!response.ok) {
+                const text = await response.text().catch(() => '');
+                this.logger.warn(`tool-jobs webhook responded with ${response.status}. ${text}`);
+            }
+        }
+        catch (notifyError) {
+            this.logger.error('Failed to notify tool-jobs webhook.', notifyError);
+        }
     }
 };
 exports.OpenclawService = OpenclawService;

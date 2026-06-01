@@ -61,6 +61,8 @@ cp .env.example .env   # và chỉnh lại biến môi trường cho phù hợp 
 | `OPENCLAW_SESSION_KEY` | Session key trỏ tới skill `/apply` | `agent:main:auto-apply` |
 | `OPENCLAW_TIMEOUT_MS` | Thời gian chờ tối đa cho 1 lần chạy | `600000` (10 phút) |
 | `PORT` | Cổng HTTP của NestJS | `3000` |
+| `TOOL_JOBS_WEBHOOK_URL` | (Tuỳ chọn) Endpoint trên Railway để nhận notify | `https://tool-jobs.up.railway.app/openclaw` |
+| `TOOL_JOBS_WEBHOOK_TOKEN` | (Tuỳ chọn) Bearer token gửi kèm webhook | `super-secret-token` |
 
 > Session key có thể đổi tuỳ cấu hình Gateway. Đảm bảo nó map tới agent/skill giống như khi bạn test bằng Telegram.
 
@@ -115,6 +117,8 @@ Hoặc:
 ```
 
 Trường `raw` giữ nguyên JSON từ CLI để bạn có thể debug nếu skill báo lỗi. Nếu Gateway trả nhiều payload, `finalText` là phần text nối lại theo thứ tự.
+
+> Nếu cấu hình `TOOL_JOBS_WEBHOOK_URL`, service sẽ POST kết quả (thành công hoặc lỗi) đến endpoint Railway của tool-jobs ngay sau khi run nền kết thúc. Payload hiện chỉ bao gồm `status`, `finalText` (đối với success) hoặc `errorMessage`, cộng thêm `commandMessage` để tool-jobs log lại dễ dàng.
 
 ## 6. Cơ chế bên trong
 

@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsString, IsUrl, ValidateIf } from 'class-validator';
+import { IsIn, IsNotEmpty, IsString, IsUrl, ValidateIf } from 'class-validator';
 
 export class AutoApplyDto {
   @ValidateIf((dto: AutoApplyDto) => !dto.jobUrl)
@@ -14,10 +14,23 @@ export class AutoApplyDto {
   @IsNotEmpty()
   coverLetter!: string;
 
+  @IsString()
+  @IsNotEmpty()
+  @IsIn(['Hourly', 'Fixed', 'hourly', 'fixed'])
+  jobType!: string;
+
   get normalizedJobId(): string | undefined {
     if (!this.jobId) return undefined;
     const trimmed = this.jobId.trim();
     if (!trimmed.length) return undefined;
     return trimmed.startsWith('~') ? trimmed : `~${trimmed}`;
+  }
+
+  get normalizedJobType(): 'Hourly' | 'Fixed' | undefined {
+    if (!this.jobType) return undefined;
+    const normalized = this.jobType.trim().toLowerCase();
+    if (normalized === 'hourly') return 'Hourly';
+    if (normalized === 'fixed') return 'Fixed';
+    return undefined;
   }
 }

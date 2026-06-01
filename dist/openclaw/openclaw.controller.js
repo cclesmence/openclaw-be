@@ -21,16 +21,9 @@ let OpenclawController = class OpenclawController {
     constructor(openclawService) {
         this.openclawService = openclawService;
     }
-    async autoApply(dto) {
-        const result = await this.openclawService.autoApply(dto);
-        return {
-            runId: result.raw.runId,
-            status: result.raw.status,
-            sessionId: result.sessionId,
-            sessionKey: result.sessionKey,
-            finalText: result.finalText,
-            raw: result.raw,
-        };
+    autoApply(dto) {
+        this.openclawService.queueAutoApply(dto);
+        return { status: 'queued' };
     }
 };
 exports.OpenclawController = OpenclawController;
@@ -40,7 +33,7 @@ __decorate([
     __param(0, (0, common_1.Body)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [auto_apply_dto_1.AutoApplyDto]),
-    __metadata("design:returntype", Promise)
+    __metadata("design:returntype", void 0)
 ], OpenclawController.prototype, "autoApply", null);
 exports.OpenclawController = OpenclawController = __decorate([
     (0, common_1.Controller)(),

@@ -15,6 +15,7 @@ class AutoApplyDto {
     jobId;
     jobUrl;
     coverLetter;
+    jobType;
     get normalizedJobId() {
         if (!this.jobId)
             return undefined;
@@ -22,6 +23,16 @@ class AutoApplyDto {
         if (!trimmed.length)
             return undefined;
         return trimmed.startsWith('~') ? trimmed : `~${trimmed}`;
+    }
+    get normalizedJobType() {
+        if (!this.jobType)
+            return undefined;
+        const normalized = this.jobType.trim().toLowerCase();
+        if (normalized === 'hourly')
+            return 'Hourly';
+        if (normalized === 'fixed')
+            return 'Fixed';
+        return undefined;
     }
 }
 exports.AutoApplyDto = AutoApplyDto;
@@ -41,4 +52,10 @@ __decorate([
     (0, class_validator_1.IsNotEmpty)(),
     __metadata("design:type", String)
 ], AutoApplyDto.prototype, "coverLetter", void 0);
+__decorate([
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.IsNotEmpty)(),
+    (0, class_validator_1.IsIn)(['Hourly', 'Fixed', 'hourly', 'fixed']),
+    __metadata("design:type", String)
+], AutoApplyDto.prototype, "jobType", void 0);
 //# sourceMappingURL=auto-apply.dto.js.map

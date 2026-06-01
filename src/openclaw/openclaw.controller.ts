@@ -8,16 +8,8 @@ export class OpenclawController {
 
   @Post('auto-apply')
   @HttpCode(HttpStatus.ACCEPTED)
-  async autoApply(@Body() dto: AutoApplyDto) {
-    const result = await this.openclawService.autoApply(dto);
-
-    return {
-      runId: result.raw.runId,
-      status: result.raw.status,
-      sessionId: result.sessionId,
-      sessionKey: result.sessionKey,
-      finalText: result.finalText,
-      raw: result.raw,
-    };
+  autoApply(@Body() dto: AutoApplyDto) {
+    this.openclawService.queueAutoApply(dto);
+    return { status: 'queued' };
   }
 }
