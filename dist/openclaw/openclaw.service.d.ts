@@ -11,5 +11,10 @@ export declare class OpenclawService {
     private runAgentCommand;
     private execWithTimeout;
     private parseAgentResponse;
+    private isOpenClawAgentResult;
+    private ensureChrome;
+    private isPortListening;
+    private waitForPort;
+    private delay;
     private extractJson;
 }

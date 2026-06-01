@@ -14,6 +14,8 @@ const class_validator_1 = require("class-validator");
 class AutoApplyDto {
     jobId;
     jobUrl;
+    coverLetter;
+    jobType;
     get normalizedJobId() {
         if (!this.jobId)
             return undefined;
@@ -21,6 +23,16 @@ class AutoApplyDto {
         if (!trimmed.length)
             return undefined;
         return trimmed.startsWith('~') ? trimmed : `~${trimmed}`;
+    }
+    get normalizedJobType() {
+        if (!this.jobType)
+            return undefined;
+        const trimmed = this.jobType.trim().toLowerCase();
+        if (trimmed === 'hourly')
+            return 'Hourly';
+        if (trimmed === 'fixed')
+            return 'Fixed';
+        return undefined;
     }
 }
 exports.AutoApplyDto = AutoApplyDto;
@@ -35,4 +47,17 @@ __decorate([
     (0, class_validator_1.IsUrl)({ require_tld: true, require_protocol: true }),
     __metadata("design:type", String)
 ], AutoApplyDto.prototype, "jobUrl", void 0);
+__decorate([
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.IsNotEmpty)(),
+    __metadata("design:type", String)
+], AutoApplyDto.prototype, "coverLetter", void 0);
+__decorate([
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.IsNotEmpty)(),
+    (0, class_validator_1.IsIn)(['Hourly', 'Fixed', 'hourly', 'fixed'], {
+        message: 'jobType must be Hourly or Fixed',
+    }),
+    __metadata("design:type", String)
+], AutoApplyDto.prototype, "jobType", void 0);
 //# sourceMappingURL=auto-apply.dto.js.map

@@ -10,6 +10,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.OpenclawService = void 0;
 const common_1 = require("@nestjs/common");
 const child_process_1 = require("child_process");
+const net_1 = require("net");
 let OpenclawService = OpenclawService_1 = class OpenclawService {
     logger = new common_1.Logger(OpenclawService_1.name);
     binary = process.env.OPENCLAW_BINARY ?? 'openclaw';
@@ -17,18 +18,24 @@ let OpenclawService = OpenclawService_1 = class OpenclawService {
     sessionKey = process.env.OPENCLAW_SESSION_KEY ?? 'agent:main:auto-apply';
     timeoutMs = Number(process.env.OPENCLAW_TIMEOUT_MS ?? 600000);
     async autoApply(dto) {
+        await this.ensureChrome();
         const message = this.buildAutoApplyMessage(dto);
         return this.runAgentCommand(message);
     }
     buildAutoApplyMessage(dto) {
-        if (dto.jobUrl) {
-            return `/apply ${dto.jobUrl.trim()}`;
+        const coverLetter = dto.coverLetter?.trim();
+        if (!coverLetter) {
+            throw new common_1.InternalServerErrorException('coverLetter phải được cung cấp.');
         }
-        const jobId = dto.normalizedJobId;
-        if (!jobId) {
+        const jobIdentifier = dto.jobUrl?.trim() ?? dto.normalizedJobId;
+        if (!jobIdentifier) {
             throw new common_1.InternalServerErrorException('jobId hoặc jobUrl phải được cung cấp.');
         }
-        return `/apply ${jobId}`;
+        const jobType = dto.normalizedJobType;
+        if (!jobType) {
+            throw new common_1.InternalServerErrorException('jobType phải là Hourly hoặc Fixed.');
+        }
+        return `/apply ${jobIdentifier} jobType=${jobType}\n\nCOVER_LETTER:\n${coverLetter}`;
     }
     async runAgentCommand(message, options) {
         const args = [
@@ -66,10 +73,10 @@ let OpenclawService = OpenclawService_1 = class OpenclawService {
                 reject(new common_1.InternalServerErrorException('OpenClaw command timed out.'));
             }, timeoutMs);
             child.stdout.on('data', (chunk) => {
-                stdout += chunk.toString();
+                stdout += typeof chunk === 'string' ? chunk : chunk.toString();
             });
             child.stderr.on('data', (chunk) => {
-                const text = chunk.toString();
+                const text = typeof chunk === 'string' ? chunk : chunk.toString();
                 stderr += text;
                 this.logger.warn(text.trim());
             });
@@ -103,15 +110,94 @@ let OpenclawService = OpenclawService_1 = class OpenclawService {
             this.logger.error('Failed to parse OpenClaw JSON', error);
             throw new common_1.InternalServerErrorException('Không thể parse kết quả OpenClaw.');
         }
+        if (!this.isOpenClawAgentResult(parsed)) {
+            this.logger.error('OpenClaw JSON có cấu trúc không hợp lệ.');
+            throw new common_1.InternalServerErrorException('OpenClaw trả về dữ liệu không hợp lệ.');
+        }
         const sessionId = parsed.result?.meta?.agentMeta?.sessionId;
-        const sessionKey = parsed.result?.meta?.systemPromptReport?.sessionKey ?? options?.sessionKey ?? this.sessionKey;
-        const finalText = parsed.result?.payloads?.map((payload) => payload.text).filter(Boolean).join('\n\n') ?? '';
+        const sessionKey = parsed.result?.meta?.systemPromptReport?.sessionKey ??
+            options?.sessionKey ??
+            this.sessionKey;
+        const finalText = parsed.result?.payloads
+            ?.map((payload) => payload.text)
+            .filter(Boolean)
+            .join('\n\n') ?? '';
         return {
             raw: parsed,
             sessionId,
             sessionKey,
             finalText,
         };
+    }
+    isOpenClawAgentResult(payload) {
+        if (!payload || typeof payload !== 'object') {
+            return false;
+        }
+        const candidate = payload;
+        return (typeof candidate.runId === 'string' &&
+            typeof candidate.status === 'string');
+    }
+    async ensureChrome() {
+        const port = 9222;
+        if (await this.isPortListening(port)) {
+            return;
+        }
+        const chromePath = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+        const chromeArgs = [
+            '--remote-debugging-port=9222',
+            '--user-data-dir=/tmp/openclaw-chrome',
+            '--no-first-run',
+            '--no-default-browser-check',
+            '--disable-background-mode',
+        ];
+        this.logger.log('Launching Chrome for remote debugging on port 9222...');
+        try {
+            const chrome = (0, child_process_1.spawn)(chromePath, chromeArgs, {
+                detached: true,
+                stdio: 'ignore',
+            });
+            chrome.unref();
+        }
+        catch (error) {
+            this.logger.error('Failed to launch Chrome', error);
+            throw new common_1.InternalServerErrorException('Không thể khởi động Chrome để auto-apply.');
+        }
+        await this.waitForPort(port, 5000);
+    }
+    isPortListening(port, host = '127.0.0.1') {
+        return new Promise((resolve) => {
+            const socket = new net_1.Socket();
+            const cleanup = () => socket.removeAllListeners();
+            socket.once('connect', () => {
+                cleanup();
+                socket.destroy();
+                resolve(true);
+            });
+            socket.once('error', () => {
+                cleanup();
+                socket.destroy();
+                resolve(false);
+            });
+            socket.setTimeout(500, () => {
+                cleanup();
+                socket.destroy();
+                resolve(false);
+            });
+            socket.connect(port, host);
+        });
+    }
+    async waitForPort(port, timeoutMs) {
+        const start = Date.now();
+        while (Date.now() - start < timeoutMs) {
+            if (await this.isPortListening(port)) {
+                return;
+            }
+            await this.delay(200);
+        }
+        throw new common_1.InternalServerErrorException('Chrome remote debugging không sẵn sàng.');
+    }
+    delay(ms) {
+        return new Promise((resolve) => setTimeout(resolve, ms));
     }
     extractJson(output) {
         const start = output.indexOf('{');

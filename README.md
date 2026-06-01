@@ -1,6 +1,6 @@
 # openclaw-be
 
-API NestJS dùng để giao tiếp với OpenClaw gateway đang chạy local, thay cho việc gõ lệnh qua bot Telegram. Endpoint chính `/auto-apply` sẽ gọi skill `/apply` (được mô tả trong `openclaw-config/agents/main/BOOTSTRAP.md`) để tự động apply job trên Upwork.
+API NestJS dùng để giao tiếp với OpenClaw gateway đang chạy local, thay cho việc gõ lệnh qua bot Telegram. Endpoint chính `/auto-apply` sẽ gọi skill `/apply` (được mô tả trong `openclaw-config/agents/main/BOOTSTRAP.md`) để tự động apply job trên Upwork bằng **cover letter do client cung cấp** và **`jobType` cụ thể (Hourly / Fixed)**.
 
 ## 1. Thành phần liên quan
 
@@ -76,13 +76,18 @@ npm run start
 
 ### `POST /auto-apply`
 
-Gọi skill `/apply` với `jobId` (Upwork job id, tự động thêm tiền tố `~`) **hoặc** `jobUrl` (URL trang apply). Ít nhất một trong hai trường phải có.
+Gọi skill `/apply` với `jobId` (Upwork job id, tự động thêm tiền tố `~`) **hoặc** `jobUrl` (URL trang apply). Ít nhất một trong hai trường phải có. Ngoài ra:
+
+- `coverLetter` (bắt buộc): nội dung sẽ được agent dán nguyên văn, không generate AI.
+- `jobType` (bắt buộc, case-insensitive): `Hourly` hoặc `Fixed` để agent biết form flow nào cần điền.
 
 **Request body**
 
 ```json
 {
-  "jobId": "022057683405563489518"
+  "jobId": "022057683405563489518",
+  "jobType": "Fixed",
+  "coverLetter": "Xin chào..."
 }
 ```
 
@@ -90,7 +95,9 @@ Hoặc:
 
 ```json
 {
-  "jobUrl": "https://www.upwork.com/nx/proposals/job/~022057683405563489518/apply/"
+  "jobUrl": "https://www.upwork.com/nx/proposals/job/~022057683405563489518/apply/",
+  "jobType": "Hourly",
+  "coverLetter": "Hello client..."
 }
 ```
 
@@ -111,8 +118,8 @@ Trường `raw` giữ nguyên JSON từ CLI để bạn có thể debug nếu sk
 
 ## 6. Cơ chế bên trong
 
-1. API nhận request, chạy validation (class-validator) đảm bảo `jobId` hoặc `jobUrl` tồn tại.
-2. Service dựng message `/apply <value>` đúng format của skill.
+1. API nhận request, chạy validation (class-validator) đảm bảo `jobId` hoặc `jobUrl` tồn tại kèm `coverLetter` và `jobType` hợp lệ.
+2. Service dựng message `/apply <value> jobType=<Hourly|Fixed>` + block `COVER_LETTER` đúng format skill.
 3. Nest spawn `openclaw agent --agent <OPENCLAW_AGENT_ID> --session-key <OPENCLAW_SESSION_KEY> --message "/apply ..." --json`.
 4. Kết quả stdout được parse về JSON, gom `payloads[].text` rồi trả lại caller.
 
